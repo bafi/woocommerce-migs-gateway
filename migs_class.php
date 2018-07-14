@@ -4,6 +4,10 @@
  * @author Moustafa Gouda <bafi99@gmail.com> forked from @author Pradipta Sarkar <pradipta.sarkar@infoway.us>
  */
 
+if ( ! defined( 'ABSPATH' ) ) {
+	exit;
+}
+
 class Migs_class {
 
 	protected $vpc_AccessCode;

@@ -1,5 +1,9 @@
 <?php
 
+if ( ! defined( 'ABSPATH' ) ) {
+	exit;
+}
+
 /* MIGS Payment Gateway Class */
 
 class MIGS extends WC_Payment_Gateway {
@@ -40,6 +44,7 @@ class MIGS extends WC_Payment_Gateway {
 			$this->$setting_key = $value;
 		}
 		add_action( 'woocommerce_api_' . strtolower( get_class( $this ) ), array( $this, 'migs_response_handler' ) );
+
 		// Lets check for SSL
 		//add_action('admin_notices', array($this, 'do_ssl_check'));
 		// Save settings
@@ -50,7 +55,6 @@ class MIGS extends WC_Payment_Gateway {
 			// class will be used instead
 			add_action( 'woocommerce_update_options_payment_gateways_' . $this->id, array( $this, 'process_admin_options' ) );
 		}
-		add_action( 'woocommerce_receipt_migs', array( $this, 'migs_receipt_page' ) );
 		//add_action('woocommerce_thankyou_migs', array($this, 'migs_response_handler'));
 	}
 
@@ -102,42 +106,41 @@ class MIGS extends WC_Payment_Gateway {
 		);
 	}
 
-	//Submit payment and handle response
+
+	/**
+	 * Submit payment and handle response
+	 *
+	 * @param int $order_id
+	 *
+	 * @return array
+	 */
 	public function process_payment( $order_id ) {
 		global $woocommerce;
 
 		//Get this Order's information so that we know
 		//who to charge and how much
 		$customer_order = new WC_Order( $order_id );
+		$protocol       = (!empty( $_SERVER['HTTPS'] ) && $_SERVER['HTTPS'] !== 'off' || $_SERVER['SERVER_PORT'] == 443) ? "https://" : "http://";
+		$payment_fields = array(
+				'vpc_Currency'    => $customer_order->get_order_currency(),
+				'vpc_AccessCode'  => trim( $this->access_code ),
+				'vpc_Amount'      => $this->get_exact_amount( $customer_order->order_total ),
+				'vpc_Command'     => 'pay',
+				'vpc_Locale'      => 'en',
+				'vpc_MerchTxnRef' => $order_id,
+				'vpc_Merchant'    => trim( $this->merchant_id ),
+				'vpc_OrderInfo'   => $customer_order->billing_email, // Always set user email in this field
+				'vpc_ReturnURL'   => add_query_arg( 'wc-api', get_class( $this ), site_url() ),
+				'vpc_Version'     => 1
+		);
+		ksort( $payment_fields );
+		$payment_fields['vpc_SecureHash']     = $this->migs_generate_secure_hash( $this->merchant_secret_key, $payment_fields );
+		$payment_fields['vpc_SecureHashType'] = 'SHA256';
 
-		/* $payment_fields = array(
-		  'vpc_AccessCode' => trim($this->access_code),
-		  'vpc_Amount' => '100',//$this->get_exact_amount($customer_order->order_total),
-		  'vpc_Command' => 'pay',
-		  'vpc_Locale' => 'en',
-		  'vpc_MerchTxnRef' => $order_id,
-		  'vpc_Merchant' => trim($this->merchant_id),
-		  'vpc_OrderInfo' => 'This is for test',
-		  'vpc_ReturnURL' => $this->get_return_url($customer_order),
-		  'vpc_Version' => 1
-		  );
-		  $hashData = $this->merchant_secret_key;
-
-		  foreach ($payment_fields as $key => $value) {
-		  $hashData .= $value;
-		  }
-
-		  $config_params = http_build_query($payment_fields);
-		  $config_params .= '&vpc_SecureHash=' . strtoupper(md5($hashData));
-		  $url = 'https://migs.mastercard.com.au/vpcpay?' . $config_params; */
+		$url = sprintf( 'https://migs.mastercard.com.au/vpcpay?%s', http_build_query( $payment_fields ) );
 
 		// Redirect to thank you page
-		return array(
-				'result'   => 'success',
-				'redirect' => $customer_order->get_checkout_payment_url( true )
-		);
-
-		//,
+		return array( 'result' => 'success', 'redirect' => $url );
 	}
 
 	// Validate fields
@@ -157,86 +160,26 @@ class MIGS extends WC_Payment_Gateway {
 		return ($amount * 100);
 	}
 
-	public function migs_receipt_page( $order_id ) {
-		global $woocommerce;
-		$customer_order = new WC_Order( $order_id );
-		$redirect_url   = add_query_arg( 'wc-api', get_class( $this ), site_url() );
-
-		$currency = 'QAR';
-		//'vpc_Currency' => $currency,
-		$payment_fields = array(
-				'vpc_AccessCode'  => trim( $this->access_code ),
-				'vpc_Amount'      => $this->get_exact_amount( $customer_order->order_total ),
-				'vpc_Command'     => 'pay',
-				'vpc_Locale'      => 'en',
-				'vpc_MerchTxnRef' => $order_id,
-				'vpc_Merchant'    => trim( $this->merchant_id ),
-				'vpc_OrderInfo'   => 'This is for test',
-				'vpc_ReturnURL'   => $redirect_url, //$this->get_return_url($customer_order),
-				'vpc_Version'     => 1
-		);
-		$hashData       = $this->merchant_secret_key;
-
-		foreach ( $payment_fields as $key => $value ) {
-			$hashData .= $value;
-		}
-
-		$config_params = http_build_query( $payment_fields );
-		$config_params .= '&vpc_SecureHash=' . strtoupper( md5( $hashData ) );
-		$url           = 'https://migs.mastercard.com.au/vpcpay?' . $config_params;
-
-		$payment_form = '<form id="migs_frm" action="' . $url . '" method="get">';
-
-		$payment_form .= '<label><input type="checkbox" name="migs_terms_cond" required="true" /></label><a href="">Terms & conditions</a>';
-
-		$payment_form .= '<input type="submit" name="migs_btn_submit" value="Pay" />';
-
-		$payment_form .= '</form>';
-
-		/*$script = '<script type="text/javascript">
-			jQuery(document).ready(function(){ jQuery("#migs_frm").on("submit", function(e){e.preventDefault(); var URL = jQuery("#migs_frm").prop("action"); window.location.href = URL; })});
-			</script>';*/
-
-		echo $payment_form;
-	}
-
+	/**
+	 * Handle response from MIGS
+	 */
 	public function migs_response_handler() {
 		global $woocommerce;
 		$response = $_REQUEST;
 
+		// Validate response from MIGS is not tampered
+		if ( !$this->migs_validate_response( $response ) ) {
+			wc_add_notice( 'Message: Invalid MIGS response', 'error' );
+			wp_redirect( $this->get_checkout_url() );
+			exit;
+		}
+
 		$order_id       = $response['vpc_MerchTxnRef'];
 		$customer_order = new WC_Order( $order_id );
 
-		$amount          = $this->null2unknown( $_GET["vpc_Amount"] );
-		$locale          = $this->null2unknown( $_GET["vpc_Locale"] );
-		$batchNo         = $this->null2unknown( $_GET["vpc_BatchNo"] );
-		$command         = $this->null2unknown( $_GET["vpc_Command"] );
-		$message         = $this->null2unknown( $_GET["vpc_Message"] );
-		$version         = $this->null2unknown( $_GET["vpc_Version"] );
-		$cardType        = $this->null2unknown( $_GET["vpc_Card"] );
-		$orderInfo       = $this->null2unknown( $_GET["vpc_OrderInfo"] );
-		$receiptNo       = $this->null2unknown( $_GET["vpc_ReceiptNo"] );
-		$merchantID      = $this->null2unknown( $_GET["vpc_Merchant"] );
-		$authorizeID     = $this->null2unknown( $_GET["vpc_AuthorizeId"] );
-		$merchTxnRef     = $this->null2unknown( $_GET["vpc_MerchTxnRef"] );
-		$transactionNo   = $this->null2unknown( $_GET["vpc_TransactionNo"] );
-		$acqResponseCode = $this->null2unknown( $_GET["vpc_AcqResponseCode"] );
 		$txnResponseCode = $this->null2unknown( $_GET["vpc_TxnResponseCode"] );
 
-
-// 3-D Secure Data
-		$verType       = array_key_exists( "vpc_VerType", $_GET ) ? $_GET["vpc_VerType"] : "No Value Returned";
-		$verStatus     = array_key_exists( "vpc_VerStatus", $_GET ) ? $_GET["vpc_VerStatus"] : "No Value Returned";
-		$token         = array_key_exists( "vpc_VerToken", $_GET ) ? $_GET["vpc_VerToken"] : "No Value Returned";
-		$verSecurLevel = array_key_exists( "vpc_VerSecurityLevel", $_GET ) ? $_GET["vpc_VerSecurityLevel"] : "No Value Returned";
-		$enrolled      = array_key_exists( "vpc_3DSenrolled", $_GET ) ? $_GET["vpc_3DSenrolled"] : "No Value Returned";
-		$xid           = array_key_exists( "vpc_3DSXID", $_GET ) ? $_GET["vpc_3DSXID"] : "No Value Returned";
-		$acqECI        = array_key_exists( "vpc_3DSECI", $_GET ) ? $_GET["vpc_3DSECI"] : "No Value Returned";
-		$authStatus    = array_key_exists( "vpc_3DSstatus", $_GET ) ? $_GET["vpc_3DSstatus"] : "No Value Returned";
-
-
 		if ( $txnResponseCode == 0 ) {
-
 			$customer_order->add_order_note( __( 'MIGS payment completed.', 'migs' ) );
 
 			// Mark order as Paid
@@ -244,30 +187,39 @@ class MIGS extends WC_Payment_Gateway {
 
 			// Empty the cart (Very important step)
 			$woocommerce->cart->empty_cart();
-			update_post_meta( $order_id, 'unique_3d_transaction_identifier', $xid );
-			update_post_meta( $order_id, '3d_authentication_value', $token );
-			update_post_meta( $order_id, '3d_electronics_commerce', $acqECI );
-			update_post_meta( $order_id, '3d_authentication_schema', $verType );
-			update_post_meta( $order_id, '3d_security_level', $verSecurLevel );
-			update_post_meta( $order_id, '3d_enrolled', $enrolled );
-			update_post_meta( $order_id, '3d_auth_status', $authStatus );
+			update_post_meta( $order_id, 'migs_response_data', $response );
+			update_post_meta( $order_id, 'migs_response_unique_3d_transaction_identifier', $this->get_key_from_request( 'vpc_3DSXID' ) );
+			update_post_meta( $order_id, 'migs_response_3d_authentication_value', $this->get_key_from_request( 'vpc_VerToken' ) );
+			update_post_meta( $order_id, 'migs_response_3d_electronics_commerce', $this->get_key_from_request( 'vpc_3DSECI' ) );
+			update_post_meta( $order_id, 'migs_response_3d_authentication_schema', $this->get_key_from_request( 'vpc_VerType' ) );
+			update_post_meta( $order_id, 'migs_response_3d_security_level', $this->get_key_from_request( 'vpc_VerSecurityLevel' ) );
+			update_post_meta( $order_id, 'migs_response_3d_enrolled', $this->get_key_from_request( 'vpc_3DSenrolled' ) );
+			update_post_meta( $order_id, 'migs_response_3d_auth_status', $this->get_key_from_request( 'vpc_3DSstatus' ) );
+			update_post_meta( $order_id, 'migs_response_message', $this->getResponseDescription( $txnResponseCode ) );
+			update_post_meta( $order_id, 'migs_response_payment_amount', $this->get_key_from_request( 'vpc_Amount' ) );
 			// Redirect to thank you page
 			wp_redirect( $this->get_return_url( $customer_order ) );
 			exit;
-
 
 		} else {
 			wc_add_notice( 'Message: ' . $this->getResponseDescription( $txnResponseCode ) . '', 'error' );
 			// Add note to the order for your reference
 			$customer_order->add_order_note( 'Error: ' . $this->getResponseDescription( $txnResponseCode ) );
-			wp_redirect( $customer_order->get_checkout_payment_url( true ) );
+			wp_redirect( $this->get_checkout_url() );
 			exit;
 		}
 
 
 	}
 
-	public function null2unknown( $data ) {
+	/**
+	 * Return the default value if value is not exist
+	 *
+	 * @param $data
+	 *
+	 * @return string
+	 */
+	protected function null2unknown( $data ) {
 		if ( $data == "" ) {
 			return "No Value Returned";
 		} else {
@@ -275,7 +227,7 @@ class MIGS extends WC_Payment_Gateway {
 		}
 	}
 
-	public function getStatusDescription( $statusResponse ) {
+	protected function getStatusDescription( $statusResponse ) {
 		if ( $statusResponse == "" || $statusResponse == "No Value Returned" ) {
 			$result = "3DS not supported or there was no 3DS data provided";
 		} else {
@@ -321,7 +273,7 @@ class MIGS extends WC_Payment_Gateway {
 		return $result;
 	}
 
-	public function getResponseDescription( $responseCode ) {
+	protected function getResponseDescription( $responseCode ) {
 
 		switch ( $responseCode ) {
 			case "0" :
@@ -402,7 +354,76 @@ class MIGS extends WC_Payment_Gateway {
 		return $result;
 	}
 
-}
+	/**
+	 * Get key form request if exist
+	 *
+	 * @param string $key
+	 *
+	 * @return string
+	 */
+	protected function get_key_from_request( $key = '' ) {
+		return array_key_exists( $key, $_GET ) ? $_GET[$key] : $this->null2unknown( '' );
+	}
 
-// End of SPYR_AuthorizeNet_AIM
-//6768?key=wc_order_55003e06463a4&vpc_3DSECI=01&vpc_3DSXID=N8IoWqjHuqErMRVFb4H%2FOsqNnLo%3D&vpc_3DSenrolled=Y&vpc_3DSstatus=A&vpc_AVSRequestCode=Z&vpc_AVSResultCode=Unsupported&vpc_AcqAVSRespCode=Unsupported&vpc_AcqCSCRespCode=Unsupported&vpc_AcqResponseCode=00&vpc_Amount=200&vpc_AuthorizeId=640799&vpc_BatchNo=20150312&vpc_CSCResultCode=Unsupported&vpc_Card=MC&vpc_Command=pay&vpc_Locale=en&vpc_MerchTxnRef=6768&vpc_Merchant=TESTDB91249&vpc_Message=Approved&vpc_OrderInfo=This+is+for+test&vpc_ReceiptNo=507101640799&vpc_SecureHash=91CE93046800BBC99997E5DABC8957C1&vpc_TransactionNo=1144&vpc_TxnResponseCode=0&vpc_VerSecurityLevel=06&vpc_VerStatus=M&vpc_VerToken=htLerxW6QIujYwAAAG6TAyUAAAA%3D&vpc_VerType=3DS&vpc_Version=1
+	/**
+	 * Generate secure hash from url params
+	 *
+	 * @param  array $params
+	 *
+	 * @return string
+	 */
+	protected function migs_generate_secure_hash( $secret, array $params ) {
+		$secureHash = "";
+		// Sorting params first based on the keys
+
+		foreach ( $params as $key => $value ) {
+			// Check if key equals to vpc_SecureHash or vpc_SecureHashType to discard it
+			if ( in_array( $key, array( 'vpc_SecureHash', 'vpc_SecureHashType' ) ) || empty( $value ) ) {
+				continue;
+			}
+			// If key either starts with vpc_ or user_
+			if ( substr( $key, 0, 4 ) === "vpc_" || substr( $key, 0, 5 ) === "user_" ) {
+				$secureHash .= $key . "=" . ($value) . "&";
+			}
+		}
+		// Remove the last `&` character from string
+		$secureHash = rtrim( $secureHash, "&" );
+		//
+		return strtoupper( hash_hmac( 'sha256', $secureHash, pack( 'H*', $secret ) ) );
+	}
+
+	/**
+	 * Validate response to avoid request tampering
+	 *
+	 * @param $data
+	 *
+	 * @return bool
+	 */
+	protected function migs_validate_response( $data ) {
+		$response_secure_hash = $data['vpc_SecureHash'];
+		unset( $data['vpc_SecureHash'] );
+		unset( $data['vpc_SecureHashType'] );
+		foreach ( $data as $key => $value ) {
+			// If key either starts with vpc_ or user_
+			if ( substr( $key, 0, 4 ) === "vpc_" || substr( $key, 0, 5 ) === "user_" ) {
+				$hashData[] = $key . "=" . $value;
+			}
+		}
+		$concatenatedInputs = implode( '&', $hashData );
+		$secure_hash        = strtoupper( hash_hmac( 'sha256', $concatenatedInputs, pack( 'H*', $this->merchant_secret_key ) ) );
+		// validate response secure hash to make sure no thing alter the reponse
+		if ( $response_secure_hash !== $secure_hash ) {
+			return false;
+		}
+		return true;
+	}
+
+	/**
+	 * Get the checkout URL
+	 *
+	 * @return false|string
+	 */
+	protected function get_checkout_url() {
+		return get_permalink( get_option( 'woocommerce_checkout_page_id' ) );
+	}
+}

@@ -7,6 +7,10 @@ Author: MGouda (bafi99@gmail.com) forked from Pradipta Sarkar <pradipta.sarkar@i
 Author URI: https://github.com/bafi
 */
 
+if ( ! defined( 'ABSPATH' ) ) {
+	exit;
+}
+
 if ( !defined( 'MIGS_PLUGIN_PATH' ) )
 	define( 'MIGS_PLUGIN_PATH', dirname( __FILE__ ) );
 if ( !defined( 'MIGS_PLUGIN_URL' ) )
