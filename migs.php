@@ -122,7 +122,7 @@ class MIGS extends WC_Payment_Gateway {
 		$customer_order = new WC_Order( $order_id );
 		$protocol       = (!empty( $_SERVER['HTTPS'] ) && $_SERVER['HTTPS'] !== 'off' || $_SERVER['SERVER_PORT'] == 443) ? "https://" : "http://";
 		$payment_fields = array(
-				'vpc_Currency'    => $customer_order->get_order_currency(),
+				'vpc_Currency'    => 'USD',//$customer_order->get_order_currency(),
 				'vpc_AccessCode'  => trim( $this->access_code ),
 				'vpc_Amount'      => $this->get_exact_amount( $customer_order->order_total ),
 				'vpc_Command'     => 'pay',
@@ -184,10 +184,11 @@ class MIGS extends WC_Payment_Gateway {
 
 			// Mark order as Paid
 			$customer_order->payment_complete();
+			wc_add_notice( 'Message: ' . $this->getResponseDescription( $txnResponseCode ) . '' );
 
 			// Empty the cart (Very important step)
 			$woocommerce->cart->empty_cart();
-			update_post_meta( $order_id, 'migs_response_data', $response );
+			update_post_meta( $order_id, 'migs_response_data', print_r($response ,true) );
 			update_post_meta( $order_id, 'migs_response_unique_3d_transaction_identifier', $this->get_key_from_request( 'vpc_3DSXID' ) );
 			update_post_meta( $order_id, 'migs_response_3d_authentication_value', $this->get_key_from_request( 'vpc_VerToken' ) );
 			update_post_meta( $order_id, 'migs_response_3d_electronics_commerce', $this->get_key_from_request( 'vpc_3DSECI' ) );
@@ -196,7 +197,7 @@ class MIGS extends WC_Payment_Gateway {
 			update_post_meta( $order_id, 'migs_response_3d_enrolled', $this->get_key_from_request( 'vpc_3DSenrolled' ) );
 			update_post_meta( $order_id, 'migs_response_3d_auth_status', $this->get_key_from_request( 'vpc_3DSstatus' ) );
 			update_post_meta( $order_id, 'migs_response_message', $this->getResponseDescription( $txnResponseCode ) );
-			update_post_meta( $order_id, 'migs_response_payment_amount', $this->get_key_from_request( 'vpc_Amount' ) );
+			update_post_meta( $order_id, 'migs_response_payment_amount', $this->get_key_from_request( 'vpc_Amount' ) / 100 );
 			// Redirect to thank you page
 			wp_redirect( $this->get_return_url( $customer_order ) );
 			exit;
