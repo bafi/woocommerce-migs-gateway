@@ -188,16 +188,10 @@ class MIGS extends WC_Payment_Gateway {
 
 			// Empty the cart (Very important step)
 			$woocommerce->cart->empty_cart();
-			update_post_meta( $order_id, 'migs_response_data', print_r($response ,true) );
-			update_post_meta( $order_id, 'migs_response_unique_3d_transaction_identifier', $this->get_key_from_request( 'vpc_3DSXID' ) );
-			update_post_meta( $order_id, 'migs_response_3d_authentication_value', $this->get_key_from_request( 'vpc_VerToken' ) );
-			update_post_meta( $order_id, 'migs_response_3d_electronics_commerce', $this->get_key_from_request( 'vpc_3DSECI' ) );
-			update_post_meta( $order_id, 'migs_response_3d_authentication_schema', $this->get_key_from_request( 'vpc_VerType' ) );
-			update_post_meta( $order_id, 'migs_response_3d_security_level', $this->get_key_from_request( 'vpc_VerSecurityLevel' ) );
-			update_post_meta( $order_id, 'migs_response_3d_enrolled', $this->get_key_from_request( 'vpc_3DSenrolled' ) );
-			update_post_meta( $order_id, 'migs_response_3d_auth_status', $this->get_key_from_request( 'vpc_3DSstatus' ) );
+			update_post_meta( $order_id, 'transaction_status', 'Approved' );
 			update_post_meta( $order_id, 'migs_response_message', $this->getResponseDescription( $txnResponseCode ) );
 			update_post_meta( $order_id, 'migs_response_payment_amount', $this->get_key_from_request( 'vpc_Amount' ) / 100 );
+			update_post_meta( $order_id, 'migs_response_data', print_r($response ,true) );
 			// Redirect to thank you page
 			wp_redirect( $this->get_return_url( $customer_order ) );
 			exit;
