@@ -77,9 +77,9 @@ class MIGS extends WC_Payment_Gateway {
 				'description'         => array(
 						'title'    => __( 'Description', 'migs' ),
 						'type'     => 'textarea',
-						'desc_tip' => __( 'Payment description the customer will see during the checkout process.', 'migs' ),
-						'default'  => __( 'Pay securely using your master card.', 'migs' ),
-						'css'      => 'max-width:350px;'
+                        'description' => __( 'Payment method description that the customer will see on your website.', 'woocommerce' ),
+						'default'  => __( 'Pay securely using your visa or master card.', 'migs' ),
+                        'desc_tip'    => true,
 				),
 				'access_code'         => array(
 						'title'    => __( 'MIGS Access Code', 'migs' ),
@@ -179,8 +179,12 @@ class MIGS extends WC_Payment_Gateway {
 
 		$txnResponseCode = $this->null2unknown( $_GET["vpc_TxnResponseCode"] );
 
-		if ( $txnResponseCode == 0 ) {
-			$customer_order->add_order_note( __( 'MIGS payment completed.', 'migs' ) );
+		// Convert to string to validate the response
+		if ( (string) $txnResponseCode == (string) '0' ) {
+			$amount = $this->get_key_from_request( 'vpc_Amount' ) / 100;
+			$currency = $this->get_key_from_request( 'vpc_Currency' );
+
+			$customer_order->add_order_note( __( "Transaction Approved with amount ($amount $currency)"   , 'migs' ) );
 
 			// Mark order as Paid
 			$customer_order->payment_complete();
@@ -190,7 +194,7 @@ class MIGS extends WC_Payment_Gateway {
 			$woocommerce->cart->empty_cart();
 			update_post_meta( $order_id, 'transaction_status', 'Approved' );
 			update_post_meta( $order_id, 'migs_response_message', $this->getResponseDescription( $txnResponseCode ) );
-			update_post_meta( $order_id, 'migs_response_payment_amount', $this->get_key_from_request( 'vpc_Amount' ) / 100 );
+			update_post_meta( $order_id, 'migs_response_payment_amount', $amount );
 			update_post_meta( $order_id, 'migs_response_data', print_r($response ,true) );
 			// Redirect to thank you page
 			wp_redirect( $this->get_return_url( $customer_order ) );
@@ -199,7 +203,7 @@ class MIGS extends WC_Payment_Gateway {
 		} else {
 			wc_add_notice( 'Message: ' . $this->getResponseDescription( $txnResponseCode ) . '', 'error' );
 			// Add note to the order for your reference
-			$customer_order->add_order_note( 'Error: ' . $this->getResponseDescription( $txnResponseCode ) );
+			$customer_order->add_order_note( 'Transaction failed (' . $this->getResponseDescription( $txnResponseCode ) .')"' );
 			wp_redirect( $this->get_checkout_url() );
 			exit;
 		}
