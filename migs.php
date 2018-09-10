@@ -24,7 +24,7 @@ class MIGS extends WC_Payment_Gateway {
 		$this->title = __( "MIGS", 'migs' );
 
 		// If you want to show an image next to the gateway's name on the frontend, enter a URL to an image.
-		$this->icon = MIGS_PLUGIN_URL . 'images/migs_icon.jpg';
+		$this->icon = MIGS_PLUGIN_URL . 'images/migs_icon.png';
 
 		// Bool. Can be set to true if you want payment fields to show on the checkout
 		// if doing a direct integration, which we are doing in this case
